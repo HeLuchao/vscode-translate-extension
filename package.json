@@ -1,0 +1,87 @@
+{
+    "name": "english-to-arabic",
+    "displayName": "English to Arabic Translator",
+    "description": "Translation of English texts into Arabic",
+    "version": "1.0.0",
+    "engines": {
+        "vscode": "^1.95.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "activationEvents": [
+        "*"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "english-to-arabic.translate",
+                "title": "翻译为阿拉伯语"
+            },
+            {
+                "command": "english-to-arabic.translateFile",
+                "title": "提取并翻译$t标记"
+            }
+        ],
+        "configuration": {
+            "title": "English to Arabic Translator",
+            "properties": {
+                "english-to-arabic.secretId": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Tencent Cloud API SecretId"
+                },
+                "english-to-arabic.secretKey": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Tencent Cloud API SecretKey"
+                }
+            }
+        },
+        "menus": {
+            "editor/context": [
+                {
+                    "when": "editorHasSelection",
+                    "command": "english-to-arabic.translate",
+                    "group": "translation"
+                },
+                {
+                    "command": "english-to-arabic.translateFile",
+                    "group": "translation"
+                }
+            ],
+            "explorer/context": [
+                {
+                    "command": "english-to-arabic.translateFile",
+                    "group": "translation"
+                }
+            ]
+        }
+    },
+    "dependencies": {
+        "node-fetch": "2.6.7"
+    },
+    "devDependencies": {
+        "@types/node": "^22.10.1",
+        "@types/node-fetch": "2.6.4",
+        "@types/vscode": "^1.95.0"
+    },
+    "scripts": {
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./"
+    },
+    "publisher": "luchaohe",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/HeLuchao/vscode-translate-extension"
+    },
+    "icon": "images/icon.png",
+    "keywords": [
+        "translate",
+        "arabic",
+        "i18n",
+        "internationalization"
+    ],
+    "license": "MIT"
+}
