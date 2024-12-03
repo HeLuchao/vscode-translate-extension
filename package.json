@@ -2,7 +2,7 @@
     "name": "english-to-arabic",
     "displayName": "English to Arabic Translator",
     "description": "Translation of English texts into Arabic",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "engines": {
         "vscode": "^1.95.0"
     },
@@ -10,7 +10,8 @@
         "Other"
     ],
     "activationEvents": [
-        "*"
+        "onStartupFinished",
+        "workspaceContains:**/*.{js,jsx,ts,tsx,vue}"
     ],
     "main": "./out/extension.js",
     "contributes": {
@@ -24,21 +25,6 @@
                 "title": "提取并翻译$t标记"
             }
         ],
-        "configuration": {
-            "title": "English to Arabic Translator",
-            "properties": {
-                "english-to-arabic.secretId": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Tencent Cloud API SecretId"
-                },
-                "english-to-arabic.secretKey": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Tencent Cloud API SecretKey"
-                }
-            }
-        },
         "menus": {
             "editor/context": [
                 {
