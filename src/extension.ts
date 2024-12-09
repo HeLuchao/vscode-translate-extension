@@ -40,17 +40,26 @@ function setNestedValue(obj: NestedTranslationMap, path: string[], value: string
 }
 
 function mergeTranslations(existing: NestedTranslationMap, newTranslations: NestedTranslationMap): NestedTranslationMap {
-    const merged = { ...existing };
-    for (const [key, value] of Object.entries(newTranslations)) {
-        if (typeof value === 'object' && value !== null) {
-            merged[key] = mergeTranslations(
-                (existing[key] as NestedTranslationMap) || {},
-                value as NestedTranslationMap
-            );
-        } else {
-            merged[key] = value;
+    const merged = JSON.parse(JSON.stringify(existing)); // 深拷贝现有翻译
+
+    function deepMerge(target: NestedTranslationMap, source: NestedTranslationMap) {
+        for (const [key, value] of Object.entries(source)) {
+            if (typeof value === 'object' && value !== null) {
+                // 如果是对象，递归合并
+                if (!(key in target) || typeof target[key] !== 'object') {
+                    target[key] = {};
+                }
+                deepMerge(target[key] as NestedTranslationMap, value as NestedTranslationMap);
+            } else {
+                // 如果目标位置已经有值，则保留原值
+                if (!(key in target)) {
+                    target[key] = value;
+                }
+            }
         }
     }
+
+    deepMerge(merged, newTranslations);
     return merged;
 }
 
@@ -65,6 +74,79 @@ function getNestedValue(obj: NestedTranslationMap, path: string[]): string {
     }
     const value = current[path[path.length - 1]];
     return typeof value === 'string' ? value : '';
+}
+
+async function readTranslationFile(filePath: string): Promise<NestedTranslationMap> {
+    if (!fs.existsSync(filePath)) {
+        return {};
+    }
+
+    const content = await fs.promises.readFile(filePath, 'utf-8');
+    try {
+        // 处理 export default 格式
+        if (content.trim().startsWith('export default')) {
+            // 移除 export default 并解析对象内容
+            const objectContent = content
+                .replace(/export\s+default\s*/, '')
+                .replace(/;?\s*$/, ''); // 移除末尾的分号
+            // 使用 Function 构造器安全地解析对象
+            const obj = new Function(`return ${objectContent}`)();
+            return obj;
+        }
+        // 尝试作为普通 JSON 解析
+        return JSON.parse(content);
+    } catch (parseError: any) {
+        console.warn(`解析文件失败: ${parseError.message}`);
+        return {};
+    }
+}
+
+async function writeTranslationFile(filePath: string, translations: NestedTranslationMap): Promise<void> {
+    // 生成 export default 格式的内容
+    const content = `export default ${JSON.stringify(translations, null, 2)};`;
+    await fs.promises.writeFile(filePath, content, 'utf-8');
+}
+
+// 添加延时函数
+function delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// 添加重试函数
+async function retryOperation<T>(
+    operation: () => Promise<T>,
+    retries: number = 3,
+    delayMs: number = 1000
+): Promise<T> {
+    let lastError;
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await operation();
+        } catch (error) {
+            lastError = error;
+            console.warn(`操作失败，第 ${i + 1} 次重试`, error);
+            if (i < retries - 1) {
+                await delay(delayMs * (i + 1)); // 递增延迟时间
+            }
+        }
+    }
+    throw lastError;
+}
+
+function normalizePath(inputPath: string, currentFileDir: string): string {
+    // 移除开头的 './' 或 '/'
+    const cleanPath = inputPath.replace(/^\.\/|^\//, '');
+
+    // 如果输入路径以 packages/ 开头，从工作区根目录开始解析
+    if (cleanPath.startsWith('packages/')) {
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+        if (workspaceRoot) {
+            return path.join(workspaceRoot, cleanPath);
+        }
+    }
+
+    // 否则从当前文件目录解析
+    return path.join(currentFileDir, cleanPath);
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -129,9 +211,9 @@ export function activate(context: vscode.ExtensionContext) {
             const currentFileDir = path.dirname(uri.fsPath);
 
             const enOutputPath = await vscode.window.showInputBox({
-                prompt: '请输入英文翻译文件的输出路径（相对于当前文件）',
-                placeHolder: '例如: ./locales/en.json',
-                value: './locales/en.json'
+                prompt: '请输入英文翻译文件的输出路径（相对于当前文件或工作区）',
+                placeHolder: '例如: ./locales/en.js 或 packages/admin/src/locales/en/index.js',
+                value: './locales/en.js'
             });
 
             if (!enOutputPath) {
@@ -139,32 +221,29 @@ export function activate(context: vscode.ExtensionContext) {
             }
 
             const arOutputPath = await vscode.window.showInputBox({
-                prompt: '请输入阿拉伯语翻译文件的输出路径（相对于当前文件）',
-                placeHolder: '例如: ./locales/ar.json',
-                value: './locales/ar.json'
+                prompt: '请输入阿拉伯语翻译文件的输出路径（相对于当前文件或工作区）',
+                placeHolder: '例如: ./locales/ar.js 或 packages/admin/src/locales/ar/index.js',
+                value: './locales/ar.js'
             });
 
             if (!arOutputPath) {
                 return;
             }
 
-            const enFullPath = path.isAbsolute(enOutputPath) ? enOutputPath : path.join(currentFileDir, enOutputPath);
-            const arFullPath = path.isAbsolute(arOutputPath) ? arOutputPath : path.join(currentFileDir, arOutputPath);
+            const enFullPath = normalizePath(enOutputPath, currentFileDir);
+            const arFullPath = normalizePath(arOutputPath, currentFileDir);
 
             let existingEnTranslations: NestedTranslationMap = {};
             let existingArTranslations: NestedTranslationMap = {};
 
             try {
-                if (fs.existsSync(enFullPath)) {
-                    const enContent = await fs.promises.readFile(enFullPath, 'utf-8');
-                    existingEnTranslations = JSON.parse(enContent);
-                }
-                if (fs.existsSync(arFullPath)) {
-                    const arContent = await fs.promises.readFile(arFullPath, 'utf-8');
-                    existingArTranslations = JSON.parse(arContent);
-                }
+                existingEnTranslations = await readTranslationFile(enFullPath);
+                console.log('成功读取英文翻译文件');
+
+                existingArTranslations = await readTranslationFile(arFullPath);
+                console.log('成功读取阿拉伯语翻译文件');
             } catch (error: any) {
-                vscode.window.showWarningMessage(`读取现有翻译文件失败，将创建新文件：${error.message}`);
+                console.warn(`读取现有翻译文件失败: ${error.message}`);
             }
 
             const fileContent = await fs.promises.readFile(uri.fsPath, 'utf-8');
@@ -179,76 +258,98 @@ export function activate(context: vscode.ExtensionContext) {
                 translationKeys.push(key);
                 const path = key.split('.');
                 const englishText = formatEnglishText(key);
-                setNestedValue(newEnTranslations, path, englishText);
+
+                // 检查是否已存在英文翻译
+                const existingEnTranslation = getNestedValue(existingEnTranslations, path);
+                if (!existingEnTranslation) {
+                    // 只在不存在时才设置新的英文翻译
+                    setNestedValue(newEnTranslations, path, englishText);
+                }
             }
 
+            // 合并翻译，保留现有内容
             const mergedEnTranslations = mergeTranslations(existingEnTranslations, newEnTranslations);
-            const mergedArTranslations = mergeTranslations(existingArTranslations, {});
+            const mergedArTranslations = mergeTranslations(existingArTranslations, newArTranslations);
 
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
                 title: "正在翻译...",
-                cancellable: false
-            }, async (progress) => {
+                cancellable: true
+            }, async (progress, token) => {
                 const total = translationKeys.length;
                 let current = 0;
+                const batchSize = 3; // 减小批次大小
+                const maxRetries = 5; // 增加重试次数
+                const initialDelay = 500; // 初始延迟时间
 
-                for (const key of translationKeys) {
-                    const path = key.split('.');
-                    const englishText = getNestedValue(mergedEnTranslations, path);
-
-                    if (!englishText) {
-                        console.log(`跳过空文案: ${key}`);
-                        continue;
+                for (let i = 0; i < translationKeys.length; i += batchSize) {
+                    if (token.isCancellationRequested) {
+                        throw new Error('用户取消了翻译');
                     }
 
-                    // 检查是否已存在阿拉伯语翻译
-                    let currentArObj = mergedArTranslations;
-                    let exists = true;
-                    for (const part of path) {
-                        if (!(part in currentArObj)) {
-                            exists = false;
-                            break;
+                    const batch = translationKeys.slice(i, i + batchSize);
+                    const promises = batch.map(async (key) => {
+                        const path = key.split('.');
+                        const englishText = getNestedValue(mergedEnTranslations, path);
+
+                        if (!englishText) {
+                            return;
                         }
-                        currentArObj = currentArObj[part] as NestedTranslationMap;
-                    }
 
-                    if (!exists) {
-                        progress.report({
-                            increment: (100 / total),
-                            message: `(${++current}/${total}) ${key} -> ${englishText}`
-                        });
+                        const existingArTranslation = getNestedValue(mergedArTranslations, path);
+                        if (existingArTranslation) {
+                            progress.report({
+                                increment: (100 / total),
+                                message: `(${++current}/${total}) ${key} (已存在)`
+                            });
+                            return;
+                        }
+
                         try {
-                            const result = await translator.translate(englishText);
-                            if (result && result !== englishText) {  // 确保翻译结果不为空且不等于原文
-                                setNestedValue(mergedArTranslations, path, result);
-                            } else {
-                                console.error(`翻译结果无效: ${key} -> ${result}`);
-                            }
+                            const result = await retryOperation(
+                                async () => {
+                                    const translation = await translator.translate(englishText);
+                                    if (!translation || translation === englishText) {
+                                        throw new Error('翻译结果无效');
+                                    }
+                                    return translation;
+                                },
+                                maxRetries,
+                                initialDelay
+                            );
+
+                            setNestedValue(mergedArTranslations, path, result);
+                            progress.report({
+                                increment: (100 / total),
+                                message: `(${++current}/${total}) ${key} -> ${result}`
+                            });
                         } catch (error) {
-                            console.error(`翻译失败: ${key}`, error);
+                            console.error(`翻译失败，使用英文原文: ${key}`, error);
+                            setNestedValue(mergedArTranslations, path, englishText);
+                            vscode.window.showWarningMessage(
+                                `翻译失败（${key}），已保留英文原文: ${englishText}`
+                            );
                         }
-                    } else {
-                        progress.report({
-                            increment: (100 / total),
-                            message: `(${++current}/${total}) ${key} (已存在)`
-                        });
+                    });
+
+                    try {
+                        await Promise.all(promises);
+                    } catch (error) {
+                        console.error('批次处理失败:', error);
+                    }
+
+                    // 增加批次间的延迟
+                    if (i + batchSize < translationKeys.length) {
+                        await delay(1000); // 增加到1秒
                     }
                 }
 
+                // 确保目录存在
                 await ensureDirectoryExists(path.dirname(enFullPath));
                 await ensureDirectoryExists(path.dirname(arFullPath));
 
-                await fs.promises.writeFile(
-                    enFullPath,
-                    JSON.stringify(mergedEnTranslations, null, 2),
-                    'utf-8'
-                );
-                await fs.promises.writeFile(
-                    arFullPath,
-                    JSON.stringify(mergedArTranslations, null, 2),
-                    'utf-8'
-                );
+                await writeTranslationFile(enFullPath, mergedEnTranslations);
+                await writeTranslationFile(arFullPath, mergedArTranslations);
             });
 
             const newKeysCount = translationKeys.length;
@@ -263,7 +364,11 @@ export function activate(context: vscode.ExtensionContext) {
                 `阿拉伯语文件：${arFullPath}`
             );
         } catch (error: any) {
-            vscode.window.showErrorMessage('翻译失败：' + error.message);
+            if (error.message === '用户取消了翻译') {
+                vscode.window.showInformationMessage('翻译已取消');
+            } else {
+                vscode.window.showErrorMessage('翻译失败：' + error.message);
+            }
         }
     });
 

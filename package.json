@@ -2,7 +2,7 @@
     "name": "english-to-arabic",
     "displayName": "English to Arabic Translator",
     "description": "Translation of English texts into Arabic",
-    "version": "1.0.1",
+    "version": "1.0.3",
     "engines": {
         "vscode": "^1.95.0"
     },
