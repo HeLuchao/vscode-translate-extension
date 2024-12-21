@@ -29,6 +29,26 @@
                 "title": "翻译为英语"
             }
         ],
+        "keybindings": [
+            {
+                "command": "english-to-arabic.translate",
+                "key": "ctrl+shift+a",
+                "mac": "cmd+shift+a",
+                "when": "editorHasSelection"
+            },
+            {
+                "command": "english-to-arabic.translateToEnglish",
+                "key": "ctrl+shift+e",
+                "mac": "cmd+alt+e",
+                "when": "editorHasSelection"
+            },
+            {
+                "command": "english-to-arabic.translateFile",
+                "key": "ctrl+shift+t",
+                "mac": "cmd+shift+t",
+                "when": "editorFocus || explorerViewFocus"
+            }
+        ],
         "menus": {
             "editor/context": [
                 {

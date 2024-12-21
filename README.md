@@ -15,6 +15,14 @@
 - 生成英文和阿拉伯语的翻译文件
 - 支持嵌套的翻译 key（如 `common.button.submit`）
 
+### 快捷键
+
+- 翻译为阿拉伯语: `Ctrl+Shift+A` (Mac: `Cmd+Shift+A`)
+- 翻译为英语: `Ctrl+Shift+E` (Mac: `Cmd+Alt+E`)
+- 提取并翻译$t标记: `Ctrl+Shift+T` (Mac: `Cmd+Shift+T`)
+
+> 注意：可以在 VS Code 的键盘快捷方式设置中自定义这些快捷键。
+
 ## 安装
 
 1. 在 VS Code 中打开扩展面板（Ctrl+Shift+X）
