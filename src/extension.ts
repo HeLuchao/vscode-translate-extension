@@ -372,7 +372,46 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    context.subscriptions.push(translateCommand, translateFileCommand);
+    // 添加新的翻译为英语的命令
+    let translateToEnglishCommand = vscode.commands.registerCommand('english-to-arabic.translateToEnglish', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            vscode.window.showErrorMessage('没有打开的编辑器！');
+            return;
+        }
+
+        const selection = editor.selection;
+        const text = editor.document.getText(selection);
+
+        if (!text) {
+            vscode.window.showErrorMessage('请先选择要翻译的文本！');
+            return;
+        }
+
+        try {
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: "正在翻译...",
+                cancellable: false
+            }, async () => {
+                // 这里将目标语言改为英语
+                const result = await translator.translate(text, 'auto', 'en');
+                if (result && result !== text) {
+                    await editor.edit(editBuilder => {
+                        editBuilder.replace(selection, result);
+                    });
+                } else {
+                    throw new Error('翻译结果无效');
+                }
+            });
+        } catch (error: any) {
+            console.error('翻译错误:', error);
+            vscode.window.showErrorMessage('翻译失败：' + error.message);
+        }
+    });
+
+    // 将新命令添加到订阅列表
+    context.subscriptions.push(translateCommand, translateFileCommand, translateToEnglishCommand);
 }
 
 async function ensureDirectoryExists(dirPath: string): Promise<void> {
